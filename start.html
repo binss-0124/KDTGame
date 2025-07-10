@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>게임 시작 화면</title>
+  <style>
+    html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; }
+    body {
+      width: 100vw; height: 100vh;
+      background: #111;
+      font-family: 'Orbitron', 'Arial Black', 'sans-serif';
+    }
+    .center-box {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(20, 24, 40, 0.85);
+      border-radius: 24px;
+      box-shadow: 0 8px 32px #000b, 0 0 0 6px #ffec7040 inset;
+      padding: 48px 64px 40px 64px;
+      display: flex; flex-direction: column; align-items: center;
+      min-width: 340px;
+    }
+    .game-title {
+      font-size: 48px; font-weight: 900; color: #ffec70;
+      letter-spacing: 4px; margin-bottom: 32px;
+      text-align: center; user-select: none;
+    }
+    .btn {
+      font-size: 28px; font-weight: bold; color: #fff;
+      background: linear-gradient(90deg, #ffec70 0%, #ffb300 100%);
+      border: none; border-radius: 16px; padding: 14px 48px;
+      box-shadow: 0 2px 16px #0008, 0 0 0 3px #fff4 inset;
+      cursor: pointer; transition: background 0.2s, transform 0.1s;
+      margin-top: 12px; letter-spacing: 2px; margin-bottom: 8px;
+    }
+    .btn:hover {
+      background: linear-gradient(90deg, #ffe066 0%, #ff9800 100%);
+      transform: scale(1.05); color: #23234d;
+    }
+    .room-section { display: flex; flex-direction: column; align-items: center; margin-top: 24px; width: 100%; }
+    .room-code-box { margin: 16px 0; font-size: 22px; color: #ffec70; background: #23234d; padding: 12px 32px; border-radius: 12px; letter-spacing: 3px; user-select: all; }
+    .room-input { font-size: 20px; padding: 10px 24px; border-radius: 10px; border: 1px solid #ffec70; margin-bottom: 12px; text-align: center; outline: none; }
+    .credit { margin-top: 36px; color: #fff8; font-size: 15px; letter-spacing: 1px; text-align: center; user-select: none; }
+  </style>
+</head>
+<body>
+  <div class="center-box">
+    <div class="game-title">GAME START</div>
+    <button class="btn" onclick="createRoom()">방 생성</button>
+    <div class="room-section">
+      <div id="roomCodeBox" class="room-code-box" style="display:none;"></div>
+      <input type="text" id="roomInput" class="room-input" placeholder="방 주소(index.html?room=코드)">
+      <button class="btn" onclick="goToRoom()">입장</button>
+    </div>
+    <div class="credit">ⓒ 2025 My Game Studio</div>
+  </div>
+  <script>
+    function createRoom() {
+      const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+      const url = `index.html?room=${code}`;
+      const box = document.getElementById('roomCodeBox');
+      box.style.display = 'block';
+      box.innerText = '방 주소: ' + url;
+      document.getElementById('roomInput').value = url;
+    }
+    function goToRoom() {
+      let url = document.getElementById('roomInput').value.trim();
+      if (!url) {
+        alert('방 주소를 입력하세요!\n예: index.html?room=ABCD12');
+        return;
+      }
+      // index.html?room=CODE 형식이 아니면 자동 보정
+      if (!/^index\.html\?room=[A-Z0-9]{4,}$/i.test(url)) {
+        alert('올바른 방 주소를 입력하세요!\n예: index.html?room=ABCD12');
+        return;
+      }
+      location.href = url;
+    }
+  </script>
+</body>
+</html>

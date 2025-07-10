@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>격투 게임 로비</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    body { margin:0; padding:0; background:#222; color:#fff; font-family:Arial,sans-serif; }
+    #lobby-wrap {
+      display:flex; flex-direction:column; align-items:center; justify-content:center;
+      height:100vh; width:100vw;
+    }
+    h1 { margin-bottom:30px; }
+    #info { margin:20px 0 10px 0; color:#FFD700; font-size:16px; }
+    input { font-size:18px; padding:8px; margin:10px 0; border-radius:5px; border:1px solid #888;}
+    button {
+      font-size:18px; padding:8px 20px; margin:5px 0; border-radius:5px; border:none;
+      background:#1976d2; color:#fff; cursor:pointer;
+    }
+    button:hover { background:#1565c0; }
+    #closeRobby { margin-top:20px; background:#aaa; color:#222; border-radius:6px; padding:8px 24px; border:none; font-size:17px;}
+    #closeRobby:hover { background:#888; }
+  </style>
+</head>
+<body>
+  <div id="lobby-wrap">
+    <h1>격투 게임 로비</h1>
+    <button id="createBtn">방 만들기</button>
+    <input id="roomInput" placeholder="방 주소 입력" />
+    <button id="joinBtn">입장</button>
+    <div id="info"></div>
+    <button id="closeRobby">닫기</button>
+  </div>
+  <script>
+    const socket = io();
+
+    document.getElementById('createBtn').onclick = () => {
+      socket.emit('createRoom', (roomId) => {
+        document.getElementById('info').innerHTML =
+          `방이 생성되었습니다!<br>주소: <b>${roomId}</b><br>이 주소를 친구에게 공유하세요.<br>접속 주소: <b>${window.location.origin}/index.html?room=${roomId}</b>`;
+      });
+    };
+
+    document.getElementById('joinBtn').onclick = () => {
+      const roomId = document.getElementById('roomInput').value.trim();
+      if (!roomId) return alert('방 주소를 입력하세요!');
+      window.parent.postMessage({ type: 'join-room', roomId }, '*');
+      document.getElementById('info').innerHTML = `입장 시도 중...`;
+    };
+
+    document.getElementById('closeRobby').onclick = function() {
+      window.parent.postMessage('close-lobby-modal', '*');
+    };
+
+    // URL 쿼리로 자동 입장
+    window.onload = () => {
+      const params = new URLSearchParams(location.search);
+      const room = params.get('room');
+      if (room) {
+        document.getElementById('roomInput').value = room;
+      }
+    };
+  </script>
+</body>
+</html>
