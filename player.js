@@ -1,9 +1,6 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.124/build/three.module.js';
 import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.124/examples/jsm/loaders/GLTFLoader.js';
-import * as map from './map.js';
 
-
-// player.js: 충돌 처리, 점프, 구르기, 바운딩박스, HP, 사망/부활, 무기 줍기 등 모든 기능 포함
 export const player = (() => {
   class Player {
     constructor(params) {
@@ -11,6 +8,10 @@ export const player = (() => {
       this.velocity_ = new THREE.Vector3(0, 0, 0);
       this.speed_ = 5;
       this.params_ = params;
+      if (this.params_.position) {
+        this.position_.copy(this.params_.position);
+      }
+      this.mainTopY_ = params.mainTopY; // mainTopY 저장
       this.mesh_ = null;
       this.mixer_ = null;
       this.animations_ = {};
@@ -22,8 +23,6 @@ export const player = (() => {
         right: false,
         shift: false,
         debug: false,
-        e_key: false,
-        ctrl_key: false,
       };
       this.jumpPower_ = 12;
       this.gravity_ = -30;
@@ -40,30 +39,6 @@ export const player = (() => {
       this.rollDirection_ = new THREE.Vector3(0, 0, 0);
       this.rollCooldown_ = 1.0;
       this.rollCooldownTimer_ = 0;
-
-      // HP, 사망, 부활, 공격, 무기/아이템
-      this.hp_ = 100;
-      this.isDead_ = false;
-      this.deathTimer_ = 0;
-      this.isAttacking_ = false;
-      this.canDamage_ = false;
-      this.swordSlashCooldown_ = 0.5;
-      this.swordSlashCooldownTimer_ = 0;
-      this.swordSlashDuration_ = 0.5;
-      this.swordSlashTimer_ = 0;
-      this.swordSlashSpeed_ = 18;
-      this.swordSlashDirection_ = new THREE.Vector3(0, 0, 0);
-
-      this.inventory_ = [];
-      this.equippedWeapon_ = null;
-      this.bareHandAttackRadius = 1.5;
-      this.bareHandAttackAngle = Math.PI / 2;
-      this.currentAttackRadius = this.bareHandAttackRadius;
-      this.currentAttackAngle = this.bareHandAttackAngle;
-      this.currentAttackDamage = 10;
-
-      this.headBone = null;
-      this.hpUI = params.hpUI || null;
 
       this.LoadModel_();
       this.InitInput_();
@@ -82,11 +57,8 @@ export const player = (() => {
         case 'KeyD': this.keys_.right = true; break;
         case 'ShiftLeft':
         case 'ShiftRight': this.keys_.shift = true; break;
-        case 'KeyE': this.keys_.e_key = true; this.PickupWeapon_(); break;
-        case 'ControlLeft':
-        case 'ControlRight': this.keys_.ctrl_key = true; break;
         case 'KeyK':
-          if (!this.isJumping_ && !this.isRolling_ && !this.isAttacking_) {
+          if (!this.isJumping_ && !this.isRolling_) {
             this.isJumping_ = true;
             this.velocityY_ = this.jumpPower_;
             this.SetAnimation_('Jump');
@@ -97,8 +69,7 @@ export const player = (() => {
             !this.isJumping_ &&
             !this.isRolling_ &&
             this.animations_['Roll'] &&
-            this.rollCooldownTimer_ <= 0 &&
-            !this.isAttacking_
+            this.rollCooldownTimer_ <= 0
           ) {
             this.isRolling_ = true;
             this.rollTimer_ = this.rollDuration_;
@@ -119,33 +90,11 @@ export const player = (() => {
             this.rollCooldownTimer_ = this.rollCooldown_;
           }
           break;
-        case 'KeyJ':
-          if (
-            !this.isJumping_ &&
-            !this.isRolling_ &&
-            this.animations_['SwordSlash'] &&
-            this.swordSlashCooldownTimer_ <= 0 &&
-            !this.isAttacking_
-          ) {
-            this.isAttacking_ = true;
-            this.canDamage_ = true;
-            this.swordSlashTimer_ = this.swordSlashDuration_;
-            this.swordSlashDirection_.set(0, 0, -1);
-            this.SetAnimation_('SwordSlash');
-            if (this.equippedWeapon_) {
-              this.currentAttackRadius = this.equippedWeapon_.attackRadius;
-              this.currentAttackAngle = this.equippedWeapon_.attackAngle;
-              this.currentAttackDamage = this.equippedWeapon_.damage;
-              this.swordSlashCooldown_ = 0.5 / this.equippedWeapon_.attackSpeedMultiplier;
-            } else {
-              this.currentAttackRadius = this.bareHandAttackRadius;
-              this.currentAttackAngle = this.bareHandAttackAngle;
-              this.currentAttackDamage = 10;
-              this.swordSlashCooldown_ = 0.5;
-            }
-            this.swordSlashCooldownTimer_ = this.swordSlashCooldown_;
-          }
-          break;
+          /*
+        case 'KeyB':
+          this.keys_.debug = !this.keys_.debug;
+          this.UpdateDebugVisuals();
+          break;*/
       }
     }
 
@@ -157,94 +106,6 @@ export const player = (() => {
         case 'KeyD': this.keys_.right = false; break;
         case 'ShiftLeft':
         case 'ShiftRight': this.keys_.shift = false; break;
-        case 'KeyE': this.keys_.e_key = false; break;
-        case 'ControlLeft':
-        case 'ControlRight': this.keys_.ctrl_key = false; break;
-      }
-    }
-
-    TakeDamage(amount) {
-      if (this.isDead_) return;
-      this.hp_ -= amount;
-      if (this.hp_ <= 0) {
-        this.hp_ = 0;
-        if (this.hpUI && typeof this.hpUI.forceDeath === 'function') {
-          this.hpUI.forceDeath();
-        }
-        this.isDead_ = true;
-        this.deathTimer_ = 5.0;
-        this.SetAnimation_('Death');
-      }
-    }
-
-
-    Revive() {
-      this.Respawn_();
-    }
-
-     Respawn_() {
-      this.hp_ = 100;
-      this.isDead_ = false;
-      this.deathTimer_ = 0;
-      let minX = 0, maxX = 0, minZ = 0, maxZ = 0, minY = 0;
-      if (map && map.MAP_BOUNDS) {
-        minX = map.MAP_BOUNDS.minX;
-        maxX = map.MAP_BOUNDS.maxX;
-        minZ = map.MAP_BOUNDS.minZ;
-        maxZ = map.MAP_BOUNDS.maxZ;
-        minY = map.MAP_BOUNDS.minY;
-      }
-      const randomX = Math.random() * (maxX - minX) + minX;
-      const randomZ = Math.random() * (maxZ - minZ) + minZ;
-      this.position_.set(randomX, minY + 10, randomZ);
-      this.velocity_.set(0, 0, 0);
-      this.velocityY_ = 0;
-      this.isJumping_ = false;
-      this.isRolling_ = false;
-      this.rollCooldownTimer_ = 0;
-      this.SetAnimation_('Idle');
-    }
-
-    PickupWeapon_() {
-      if (!this.params_.weapons) return;
-      let closestWeapon = null;
-      let minDistance = Infinity;
-      this.params_.weapons.forEach(weapon => {
-        if (weapon.model_) {
-          const distance = this.mesh_.position.distanceTo(weapon.model_.position);
-          if (distance < 2 && distance < minDistance) {
-            minDistance = distance;
-            closestWeapon = weapon;
-          }
-        }
-      });
-      if (closestWeapon) {
-        this.params_.scene.remove(closestWeapon.model_);
-        if (typeof closestWeapon.HideRangeIndicator === 'function') {
-          closestWeapon.HideRangeIndicator();
-        }
-        const index = this.params_.weapons.indexOf(closestWeapon);
-        if (index > -1) {
-          this.params_.weapons.splice(index, 1);
-        }
-        this.EquipItem(closestWeapon);
-      }
-    }
-
-    EquipItem(item) {
-      if (this.equippedWeapon_) {
-        if (this.equippedWeapon_.model_ && this.equippedWeapon_.model_.parent) {
-          this.equippedWeapon_.model_.parent.remove(this.equippedWeapon_.model_);
-        }
-      }
-      const handBone = this.mesh_.getObjectByName('FistR') || this.mesh_.getObjectByName('HandR');
-      if (handBone && item.model_) {
-        handBone.add(item.model_);
-        item.model_.position.set(0, 0, 0.1);
-        item.model_.rotation.set(Math.PI / 2, Math.PI / 2, Math.PI * 1.5);
-        item.model_.position.x = -0.01;
-        item.model_.position.y = 0.09;
-        this.equippedWeapon_ = item;
       }
     }
 
@@ -266,12 +127,12 @@ export const player = (() => {
               c.material.color.offsetHSL(0, 0, 0.25);
             }
           }
-          if (c.isBone && c.name === 'Head') {
-            this.headBone = c;
-          }
         });
 
-        const halfWidth = 0.65, halfHeight = 3.2, halfDepth = 0.65;
+        // 고정된 크기의 바운딩 박스 초기화
+        const halfWidth = 0.65; // 너비: 1.0
+        const halfHeight = 3.2; // 높이: 2.5
+        const halfDepth = 0.65; // 깊이: 1.0
         this.boundingBox_.set(
           new THREE.Vector3(-halfWidth, 0, -halfDepth),
           new THREE.Vector3(halfWidth, halfHeight, halfDepth)
@@ -282,21 +143,6 @@ export const player = (() => {
         this.params_.scene.add(this.boundingBoxHelper_);
 
         this.mixer_ = new THREE.AnimationMixer(model);
-
-        this.mixer_.addEventListener('finished', (e) => {
-          if (e.action.getClip().name === 'SwordSlash') {
-            this.isAttacking_ = false;
-            this.canDamage_ = false;
-            const isMoving = this.keys_.forward || this.keys_.backward || this.keys_.left || this.keys_.right;
-            const isRunning = isMoving && this.keys_.shift;
-            if (isMoving) {
-              this.SetAnimation_(isRunning ? 'Run' : 'Walk');
-            } else {
-              this.SetAnimation_('Idle');
-            }
-          }
-        });
-
         for (const clip of gltf.animations) {
           this.animations_[clip.name] = this.mixer_.clipAction(clip);
         }
@@ -306,56 +152,20 @@ export const player = (() => {
 
     SetAnimation_(name) {
       if (this.currentAction_ === this.animations_[name]) return;
-      if (!this.animations_[name]) return;
       if (this.currentAction_) {
         this.currentAction_.fadeOut(0.3);
       }
       this.currentAction_ = this.animations_[name];
-      this.currentAction_.reset().fadeIn(0.3).play();
-
-      // 무기 자세 제어
-      if (this.equippedWeapon_ && this.equippedWeapon_.model_) {
-        const weapon = this.equippedWeapon_.model_;
-        switch (name) {
-          case 'SwordSlash':
-            weapon.position.set(-0.05, 0.05, -0.1);
-            weapon.rotation.set(Math.PI / 2, Math.PI / 2, 0);
-            break;
-          case 'Idle':
-          case 'Walk':
-          case 'Run':
-            weapon.position.set(-0.01, 0.09, 0.1);
-            weapon.rotation.set(Math.PI / 2, Math.PI / 2, 0);
-            break;
-          default:
-            weapon.position.set(-0.01, 0.09, 0.1);
-            weapon.rotation.set(Math.PI / 2, Math.PI / 2, 0);
-            break;
+      if (this.currentAction_) {
+        this.currentAction_.reset().fadeIn(0.3).play();
+        if (name === 'Jump') {
+          this.currentAction_.setLoop(THREE.LoopOnce);
+          this.currentAction_.clampWhenFinished = true;
+          this.currentAction_.time = 0.25;
+          this.currentAction_.timeScale = this.jumpSpeed_;
+        } else {
+          this.currentAction_.timeScale = 1.0;
         }
-      }
-
-      if (name === 'Jump') {
-        this.currentAction_.setLoop(THREE.LoopOnce);
-        this.currentAction_.clampWhenFinished = true;
-        this.currentAction_.time = 0.25;
-        this.currentAction_.timeScale = this.jumpSpeed_;
-      } else if (name === 'Roll') {
-        this.currentAction_.setLoop(THREE.LoopOnce);
-        this.currentAction_.clampWhenFinished = true;
-        this.currentAction_.time = 0.0;
-        this.currentAction_.timeScale = 1.2;
-      } else if (name === 'Death') {
-        this.currentAction_.setLoop(THREE.LoopOnce);
-        this.currentAction_.clampWhenFinished = true;
-        this.currentAction_.time = 0.0;
-        this.currentAction_.timeScale = 1.0;
-      } else if (name === 'SwordSlash') {
-        this.currentAction_.setLoop(THREE.LoopOnce);
-        this.currentAction_.clampWhenFinished = true;
-        this.currentAction_.time = 0;
-        this.currentAction_.timeScale = 1.2;
-      } else {
-        this.currentAction_.timeScale = 1.0;
       }
     }
 
@@ -368,108 +178,244 @@ export const player = (() => {
       }
     }
 
-    Update(timeElapsed, rotationAngle = 0, collidables = []) {
+    Update(timeElapsed, rotationAngle = 0, collidables = [], rimCollidables = []) {
       if (!this.mesh_) return;
 
       this.lastRotationAngle_ = rotationAngle;
 
-      // 쿨타임 관리
       if (this.rollCooldownTimer_ > 0) {
         this.rollCooldownTimer_ -= timeElapsed;
         if (this.rollCooldownTimer_ < 0) this.rollCooldownTimer_ = 0;
       }
-      if (this.swordSlashCooldownTimer_ > 0) {
-        this.swordSlashCooldownTimer_ -= timeElapsed;
-        if (this.swordSlashCooldownTimer_ < 0) this.swordSlashCooldownTimer_ = 0;
+
+      let newPosition = this.position_.clone();
+      let velocity = new THREE.Vector3();
+      const forward = new THREE.Vector3(0, 0, -1);
+      const right = new THREE.Vector3(1, 0, 0);
+
+      // 입력에 따른 방향 계산
+      if (this.keys_.forward) velocity.z -= 1;
+      if (this.keys_.backward) velocity.z += 1;
+      if (this.keys_.left) velocity.x -= 1;
+      if (this.keys_.right) velocity.x += 1;
+      velocity.applyAxisAngle(new THREE.Vector3(0, 1, 0), rotationAngle);
+
+      // 회전 업데이트 (충돌과 무관하게 항상 처리)
+      if (velocity.length() > 0.01) {
+        const angle = Math.atan2(velocity.x, velocity.z);
+        const targetQuaternion = new THREE.Quaternion().setFromAxisAngle(
+          new THREE.Vector3(0, 1, 0), angle
+        );
+        this.mesh_.quaternion.slerp(targetQuaternion, 0.3);
       }
 
-      // 사망 상태 처리
-      if (this.isDead_) {
-        if (this.deathTimer_ > 0) {
-          this.deathTimer_ -= timeElapsed;
-          if (this.deathTimer_ <= 0) {
-            this.deathTimer_ = 0;
-            this.Revive();
-          }
-        }
-        if (this.mixer_) {
-          this.mixer_.update(timeElapsed);
-        }
-        return;
-      }
-
-      // SwordSlash 이동
-      if (this.isAttacking_) {
-        this.swordSlashTimer_ -= timeElapsed;
-        const slashMove = this.swordSlashDirection_.clone().multiplyScalar(this.swordSlashSpeed_ * timeElapsed);
-        this.position_.add(slashMove);
-        if (this.swordSlashTimer_ <= 0) {
-          this.isAttacking_ = false;
-        }
-      }
-
-      // 구르기 이동
       if (this.isRolling_) {
         this.rollTimer_ -= timeElapsed;
         const rollMove = this.rollDirection_.clone().multiplyScalar(this.rollSpeed_ * timeElapsed);
-        this.position_.add(rollMove);
-        if (this.rollTimer_ <= 0) {
-          this.isRolling_ = false;
-        }
-      }
+        newPosition.add(rollMove);
 
-      // 일반 이동/점프/충돌
-      let currentSpeed = 0;
-      if (!this.isRolling_ && !this.isAttacking_) {
-        const velocity = new THREE.Vector3();
-        const forward = new THREE.Vector3(0, 0, -1);
-        const right = new THREE.Vector3(1, 0, 0);
-        if (this.keys_.forward) velocity.add(forward);
-        if (this.keys_.backward) velocity.sub(forward);
-        if (this.keys_.left) velocity.sub(right);
-        if (this.keys_.right) velocity.add(right);
-        velocity.applyAxisAngle(new THREE.Vector3(0, 1, 0), rotationAngle);
-
-        const isMoving = this.keys_.forward || this.keys_.backward || this.keys_.left || this.keys_.right;
-        const isRunning = isMoving && this.keys_.shift;
-        currentSpeed = isRunning ? this.speed_ * 2 : this.speed_;
-
-        velocity.normalize().multiplyScalar(currentSpeed * timeElapsed);
-        this.position_.add(velocity);
-
+        // 중력 적용
         this.velocityY_ += this.gravity_ * timeElapsed;
-        this.position_.y += this.velocityY_ * timeElapsed;
+        newPosition.y += this.velocityY_ * timeElapsed;
 
-        if (this.position_.y <= 0) {
-          this.position_.y = 0;
+        // 구르기 중 충돌 체크 및 슬라이딩 처리
+        const tempBox = this.boundingBox_.clone();
+        tempBox.translate(rollMove);
+        tempBox.translate(new THREE.Vector3(0, this.velocityY_ * timeElapsed, 0));
+
+        let canMove = true;
+        let adjustedRollMove = rollMove.clone();
+        let isOnTop = false;
+        let topY = 0;
+
+        for (const collidable of collidables.concat(rimCollidables)) {
+          if (tempBox.intersectsBox(collidable.boundingBox)) {
+            // 플레이어가 오브젝트 위에 있는지 확인
+            const playerBottom = this.boundingBox_.min.y + this.velocityY_ * timeElapsed;
+            const collidableTop = collidable.boundingBox.max.y;
+            if (playerBottom >= collidableTop - 0.1 && this.position_.y >= collidableTop - 0.1) {
+              isOnTop = true;
+              topY = Math.max(topY, collidableTop);
+              // X/Z 이동은 허용하되, 바운딩 박스 경계 체크
+              const newTempBox = this.boundingBox_.clone();
+              newTempBox.translate(rollMove);
+              if (
+                newTempBox.min.x > collidable.boundingBox.max.x ||
+                newTempBox.max.x < collidable.boundingBox.min.x ||
+                newTempBox.min.z > collidable.boundingBox.max.z ||
+                newTempBox.max.z < collidable.boundingBox.min.z
+              ) {
+                isOnTop = false; // 경계를 벗어나면 떨어져야 함
+              }
+              if (isOnTop) continue; // 오브젝트 위에 있으면 X/Z 이동 허용
+            }
+
+            canMove = false;
+            // X와 Z 방향을 개별적으로 테스트
+            let canMoveX = true;
+            let canMoveZ = true;
+
+            // X 방향 테스트
+            const tempBoxX = this.boundingBox_.clone();
+            tempBoxX.translate(new THREE.Vector3(rollMove.x, this.velocityY_ * timeElapsed, 0));
+            if (tempBoxX.intersectsBox(collidable.boundingBox)) {
+              canMoveX = false;
+            }
+
+            // Z 방향 테스트
+            const tempBoxZ = this.boundingBox_.clone();
+            tempBoxZ.translate(new THREE.Vector3(0, this.velocityY_ * timeElapsed, rollMove.z));
+            if (tempBoxZ.intersectsBox(collidable.boundingBox)) {
+              canMoveZ = false;
+            }
+
+            // 슬라이딩: 충돌하지 않는 방향으로만 이동
+            if (!canMoveX && canMoveZ) {
+              adjustedRollMove.x = 0; // X 방향 이동 차단
+            } else if (canMoveX && !canMoveZ) {
+              adjustedRollMove.z = 0; // Z 방향 이동 차단
+            } else {
+              adjustedRollMove.set(0, 0, 0); // 둘 다 충돌 시 이동 차단
+            }
+            break; // 첫 번째 충돌 처리 후 종료
+          }
+        }
+
+        if (canMove || adjustedRollMove.length() > 0) {
+          this.position_.add(adjustedRollMove);
+          if (isOnTop) {
+            this.position_.y = topY; // 오브젝트 위에 고정
+            this.velocityY_ = 0;
+            this.isJumping_ = false;
+          } else {
+            this.position_.y = newPosition.y; // 중력에 따라 Y 이동
+          }
+        } else {
+          this.position_.y = newPosition.y; // Y 이동은 허용
+        }
+
+        // 바닥 체크
+        if (this.position_.y <= this.mainTopY_ && !isOnTop) {
+          this.position_.y = this.mainTopY_;
           this.velocityY_ = 0;
           this.isJumping_ = false;
         }
 
-        if (this.position_.y > 0 && this.isJumping_) {
-          this.SetAnimation_('Jump');
+        if (this.rollTimer_ <= 0) {
+          this.isRolling_ = false;
+          const isMoving = this.keys_.forward || this.keys_.backward || this.keys_.left || this.keys_.right;
+          const isRunning = isMoving && this.keys_.shift;
+          this.SetAnimation_(isMoving ? (isRunning ? 'Run' : 'Walk') : 'Idle');
         }
-
-        if (velocity.length() > 0.01) {
-          const angle = Math.atan2(velocity.x, velocity.z);
-          const targetQuaternion = new THREE.Quaternion().setFromAxisAngle(
-            new THREE.Vector3(0, 1, 0), angle
-          );
-          this.mesh_.quaternion.slerp(targetQuaternion, 0.3);
-        }
-      }
-
-      // 애니메이션 선택
-      if (this.isDead_) {
-        this.SetAnimation_('Death');
-      } else if (this.isRolling_) {
-        this.SetAnimation_('Roll');
-      } else if (this.isJumping_) {
-        this.SetAnimation_('Jump');
-      } else if (!this.isAttacking_) {
+      } else {
         const isMoving = this.keys_.forward || this.keys_.backward || this.keys_.left || this.keys_.right;
         const isRunning = isMoving && this.keys_.shift;
-        if (isMoving) {
+        const moveSpeed = isRunning ? this.speed_ * 2 : this.speed_;
+
+        velocity.normalize().multiplyScalar(moveSpeed * timeElapsed);
+        newPosition.add(velocity);
+
+        // 중력 적용
+        this.velocityY_ += this.gravity_ * timeElapsed;
+        newPosition.y += this.velocityY_ * timeElapsed;
+
+        // 충돌 감지 및 슬라이딩 처리
+        const tempBox = this.boundingBox_.clone();
+        tempBox.translate(velocity);
+        tempBox.translate(new THREE.Vector3(0, this.velocityY_ * timeElapsed, 0));
+
+        let canMove = true;
+        let stepUpHeight = 0;
+        let adjustedVelocity = velocity.clone();
+        let isOnTop = false;
+        let topY = 0;
+
+        for (const collidable of collidables.concat(rimCollidables)) {
+          if (tempBox.intersectsBox(collidable.boundingBox)) {
+            // 플레이어가 오브젝트 위에 있는지 확인
+            const playerBottom = this.boundingBox_.min.y + this.velocityY_ * timeElapsed;
+            const collidableTop = collidable.boundingBox.max.y;
+            if (playerBottom >= collidableTop - 0.1 && this.position_.y >= collidableTop - 0.1) {
+              isOnTop = true;
+              topY = Math.max(topY, collidableTop);
+              // X/Z 이동은 허용하되, 바운딩 박스 경계 체크
+              const newTempBox = this.boundingBox_.clone();
+              newTempBox.translate(velocity);
+              if (
+                newTempBox.min.x > collidable.boundingBox.max.x ||
+                newTempBox.max.x < collidable.boundingBox.min.x ||
+                newTempBox.min.z > collidable.boundingBox.max.z ||
+                newTempBox.max.z < collidable.boundingBox.min.z
+              ) {
+                isOnTop = false; // 경계를 벗어나면 떨어져야 함
+              }
+              if (isOnTop) continue; // 오브젝트 위에 있으면 X/Z 이동 허용
+            }
+
+            const boxMaxY = collidable.boundingBox.max.y;
+            if (boxMaxY <= this.position_.y + this.maxStepHeight_ && boxMaxY > this.position_.y) {
+              stepUpHeight = Math.max(stepUpHeight, boxMaxY - this.position_.y);
+            } else {
+              canMove = false;
+              // X와 Z 방향을 개별적으로 테스트
+              let canMoveX = true;
+              let canMoveZ = true;
+
+              // X 방향 테스트
+              const tempBoxX = this.boundingBox_.clone();
+              tempBoxX.translate(new THREE.Vector3(velocity.x, this.velocityY_ * timeElapsed, 0));
+              if (tempBoxX.intersectsBox(collidable.boundingBox)) {
+                canMoveX = false;
+              }
+
+              // Z 방향 테스트
+              const tempBoxZ = this.boundingBox_.clone();
+              tempBoxZ.translate(new THREE.Vector3(0, this.velocityY_ * timeElapsed, velocity.z));
+              if (tempBoxZ.intersectsBox(collidable.boundingBox)) {
+                canMoveZ = false;
+              }
+
+              // 슬라이딩: 충돌하지 않는 방향으로만 이동
+              if (!canMoveX && canMoveZ) {
+                adjustedVelocity.x = 0; // X 방향 이동 차단
+              } else if (canMoveX && !canMoveZ) {
+                adjustedVelocity.z = 0; // Z 방향 이동 차단
+              } else {
+                adjustedVelocity.set(0, 0, 0); // 둘 다 충돌 시 이동 차단
+              }
+              break;
+            }
+          }
+        }
+
+        if (canMove || adjustedVelocity.length() > 0) {
+          this.position_.add(adjustedVelocity);
+          if (stepUpHeight > 0) {
+            this.position_.y = newPosition.y + stepUpHeight;
+            this.velocityY_ = 0;
+            this.isJumping_ = false;
+          } else if (isOnTop) {
+            this.position_.y = topY; // 오브젝트 위에 고정
+            this.velocityY_ = 0;
+            this.isJumping_ = false;
+          } else {
+            this.position_.y = newPosition.y; // 중력에 따라 Y 이동
+          }
+        } else {
+          this.position_.y = newPosition.y; // Y 이동은 허용
+        }
+
+        // 바닥 체크
+        if (this.position_.y <= this.mainTopY_ && !isOnTop) {
+          this.position_.y = this.mainTopY_;
+          this.velocityY_ = 0;
+          this.isJumping_ = false;
+        }
+
+        // 애니메이션 업데이트
+        if (this.position_.y > this.mainTopY_ && this.isJumping_) {
+          this.SetAnimation_('Jump');
+        } else if (isMoving) {
           this.SetAnimation_(isRunning ? 'Run' : 'Walk');
         } else {
           this.SetAnimation_('Idle');
@@ -477,6 +423,14 @@ export const player = (() => {
       }
 
       this.mesh_.position.copy(this.position_);
+      // 바운딩 박스 위치를 플레이어에 맞춰 업데이트
+      const halfWidth = 0.65; // 너비: 1.0
+      const halfHeight = 3.2; // 높이: 2.5
+      const halfDepth = 0.65; // 깊이: 1.0  
+      this.boundingBox_.set(
+        new THREE.Vector3(this.position_.x - halfWidth, this.position_.y, this.position_.z - halfDepth),
+        new THREE.Vector3(this.position_.x + halfWidth, this.position_.y + halfHeight, this.position_.z + halfDepth)
+      );
 
       if (this.mixer_) {
         this.mixer_.update(timeElapsed);
