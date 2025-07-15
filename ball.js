@@ -10,9 +10,9 @@ export class Ball {
     this.ballNumber_ = params.ballNumber;
 
     this.velocity_ = new THREE.Vector3(
-        (Math.random() * 2 - 1) * 2,
+        (Math.random() * 2 - 1) * 10, // Increased speed
         0,
-        (Math.random() * 2 - 1) * 2
+        (Math.random() * 2 - 1) * 10  // Increased speed
     );
 
     this.LoadModel_();
@@ -28,6 +28,13 @@ export class Ball {
         if (child.isMesh) {
           child.castShadow = true;
           child.receiveShadow = true;
+          // Assign color based on ball number
+          if (this.ballNumber_ === 8) {
+            child.material = new THREE.MeshStandardMaterial({ color: 0x000000 }); // Black for ball 8
+          } else {
+            const randomColor = new THREE.Color(Math.random(), Math.random(), Math.random());
+            child.material = new THREE.MeshStandardMaterial({ color: randomColor });
+          }
         }
       });
       this.scene_.add(this.mesh_);
