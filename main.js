@@ -4,9 +4,11 @@ import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.124/examples/js
 import { player } from './player.js';
 import { object } from './object.js';
 import { math } from './math.js';
+import { Ball } from './ball.js';
 
 export class GameStage3 {
   constructor() {
+    console.log('GameStage3 constructor called.');
     this.Initialize();
     this.RAF();
   }
@@ -39,6 +41,7 @@ export class GameStage3 {
     this.collidables_ = [];
     this.rimCollidables_ = [];
     this.holes_ = [];
+    this.balls_ = [];
     this.isFalling = false;
 
     this.SetupLighting();
@@ -130,6 +133,11 @@ export class GameStage3 {
           this.mainTopY = mainBox.max.y;
           this.collidables_.push({ boundingBox: mainBox, object: mainObject });
           mainObject.visible = false;
+
+          console.log('mainBox:', mainBox);
+          console.log('mainTopY:', this.mainTopY);
+
+          this.CreateBalls(mainBox, this.mainTopY);
         }
 
         let groundY = 0;
@@ -190,6 +198,25 @@ export class GameStage3 {
     );
   }
 
+  CreateBalls(mainBoundingBox, mainTopY) {
+    for (let i = 1; i <= 6; i++) {
+      const position = new THREE.Vector3(
+          mainBoundingBox.min.x + Math.random() * (mainBoundingBox.max.x - mainBoundingBox.min.x),
+          mainTopY + 0.1,
+          mainBoundingBox.min.z + Math.random() * (mainBoundingBox.max.z - mainBoundingBox.min.z)
+      );
+
+      const ball = new Ball({
+        scene: this.scene,
+        position: position,
+        mainBoundingBox: mainBoundingBox,
+        ballNumber: i
+      });
+
+      this.balls_.push(ball);
+    }
+  }
+
   CreatePlayer(playerY) {
     this.player_ = new player.Player({
       scene: this.scene,
@@ -240,6 +267,10 @@ export class GameStage3 {
 
     if (this.npc_) {
       this.npc_.Update(delta);
+    }
+
+    for (const ball of this.balls_) {
+      ball.Update(delta);
     }
 
     this.renderer.render(this.scene, this.camera);
