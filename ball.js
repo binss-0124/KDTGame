@@ -68,14 +68,17 @@ export class Ball {
       if (otherBall === this) continue; // 자기 자신과의 충돌은 무시
 
       if (this.boundingBox_.intersectsBox(otherBall.boundingBox_)) {
-        // 충돌 발생: 각 공의 속도를 반대 방향으로 변경
-        this.velocity_.negate();
-        otherBall.velocity_.negate();
+        // 충돌 발생: 법선 벡터에 따라 속도 반사
+        const normal = new THREE.Vector3().subVectors(this.position_, otherBall.position_).normalize();
+
+        // 각 공의 속도를 법선에 대해 반사
+        this.velocity_.reflect(normal);
+        otherBall.velocity_.reflect(normal.clone().negate()); // 다른 공은 반대 법선으로 반사
 
         // 공들이 겹치는 것을 방지하기 위해 약간 밀어냄
-        const direction = new THREE.Vector3().subVectors(this.position_, otherBall.position_).normalize();
-        this.position_.add(direction.multiplyScalar(0.1)); // 약간 밀어내는 거리
-        otherBall.position_.sub(direction.multiplyScalar(0.1));
+        const overlapDirection = new THREE.Vector3().subVectors(this.position_, otherBall.position_).normalize();
+        this.position_.add(overlapDirection.multiplyScalar(0.1)); // 약간 밀어내는 거리
+        otherBall.position_.sub(overlapDirection.multiplyScalar(0.1));
       }
     }
 
@@ -85,13 +88,21 @@ export class Ball {
     }
 
     // 경계 체크 및 반사
-    if (this.position_.x < this.mainBoundingBox_.min.x || this.position_.x > this.mainBoundingBox_.max.x) {
-      this.velocity_.x *= -1;
-      this.position_.x = Math.max(this.mainBoundingBox_.min.x, Math.min(this.mainBoundingBox_.max.x, this.position_.x));
+    // 경계 체크 및 반사
+    if (this.position_.x < this.mainBoundingBox_.min.x) {
+      this.velocity_.reflect(new THREE.Vector3(1, 0, 0));
+      this.position_.x = this.mainBoundingBox_.min.x;
+    } else if (this.position_.x > this.mainBoundingBox_.max.x) {
+      this.velocity_.reflect(new THREE.Vector3(-1, 0, 0));
+      this.position_.x = this.mainBoundingBox_.max.x;
     }
-    if (this.position_.z < this.mainBoundingBox_.min.z || this.position_.z > this.mainBoundingBox_.max.z) {
-      this.velocity_.z *= -1;
-      this.position_.z = Math.max(this.mainBoundingBox_.min.z, Math.min(this.mainBoundingBox_.max.z, this.position_.z));
+
+    if (this.position_.z < this.mainBoundingBox_.min.z) {
+      this.velocity_.reflect(new THREE.Vector3(0, 0, 1));
+      this.position_.z = this.mainBoundingBox_.min.z;
+    } else if (this.position_.z > this.mainBoundingBox_.max.z) {
+      this.velocity_.reflect(new THREE.Vector3(0, 0, -1));
+      this.position_.z = this.mainBoundingBox_.max.z;
     }
 
     this.mesh_.position.copy(this.position_);
