@@ -16,11 +16,11 @@ export class GameStage3 {
 
     // [사용자 설정] 공 속도 증가 간격 (초 단위)
     // 이 값을 변경하여 공의 속도가 증가하는 주기를 조절할 수 있습니다.
-    this.ballSpeedIncreaseInterval = 3; 
+    this.ballSpeedIncreaseInterval = 5; 
 
     // [사용자 설정] 공 속도 증가량 (단위: 게임 내 속도 단위)
     // 이 값을 변경하여 공의 속도가 한 번에 얼마나 증가할지 조절할 수 있습니다.
-    this.ballSpeedIncrement = 10; 
+    this.ballSpeedIncrement = 2; 
 
     this.timeSinceLastBallSpeedIncrease = 0; // 마지막 공 속도 증가 이후 경과 시간 (내부 사용)
     this.currentBallSpeedIncrease = 0; // 현재까지 누적된 공 속도 증가량 (내부 사용)
@@ -295,8 +295,9 @@ export class GameStage3 {
       this.npc_.Update(delta);
     }
 
+    // [수정] 모든 공 인스턴스를 Ball.Update 메서드로 전달하여 공끼리 충돌 감지 가능하게 함
     for (const ball of this.balls_) {
-      ball.Update(delta, this.currentBallSpeedIncrease);
+      ball.Update(delta, this.currentBallSpeedIncrease, this.balls_);
     }
 
     this.renderer.render(this.scene, this.camera);
