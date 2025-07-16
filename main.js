@@ -182,6 +182,10 @@ export class GameStage3 {
             }
 
             if (child.name.includes('hole')) {
+              child.position.y += 0.3; // Adjust this value as needed
+              if (child.material) {
+                child.material = new THREE.MeshStandardMaterial({ color: 0xffffff }); // Set color to black
+              }
               const box = new THREE.Box3().setFromObject(child);
               this.holes_.push({ object: child, boundingBox: box });
             }
