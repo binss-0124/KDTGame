@@ -8,6 +8,8 @@ export class Ball {
     this.position_ = params.position;
     this.mainBoundingBox_ = params.mainBoundingBox;
     this.ballNumber_ = params.ballNumber;
+    this.ballColor_ = params.ballColor; // 추가: 공의 색상
+    this.ballColor_ = params.ballColor; // 추가: 공의 색상
 
     // 초기 속도에 누적된 공 속도 증가량 적용
     this.initialSpeed_ = 5; // 공의 기본 속도
@@ -30,8 +32,10 @@ export class Ball {
         if (child.isMesh) {
           child.castShadow = true;
           child.receiveShadow = true;
-          // Assign color based on ball number
-          if (this.ballNumber_ === 8) {
+          // Assign color based on ball number or provided color
+          if (this.ballColor_ !== undefined) {
+            child.material = new THREE.MeshStandardMaterial({ color: this.ballColor_ });
+          } else if (this.ballNumber_ === 8) {
             child.material = new THREE.MeshStandardMaterial({ color: 0x000000 }); // Black for ball 8
           } else {
             const randomColor = new THREE.Color(Math.random(), Math.random(), Math.random());
@@ -55,13 +59,79 @@ export class Ball {
     });
   }
 
-  Update(delta, currentBallSpeedIncrease = 0, allBalls = []) {
+  Update(delta, currentBallSpeedIncrease = 0, allBalls = [], allHoles = []) {
     if (!this.mesh_) {
       return;
     }
 
     // 공의 이동 속도에 누적된 증가량 적용
     this.position_.add(this.velocity_.clone().normalize().multiplyScalar((this.initialSpeed_ + currentBallSpeedIncrease) * delta));
+
+    // [추가] 홀과의 충돌 감지 및 반사
+    for (const hole of allHoles) {
+      if (this.boundingBox_.intersectsBox(hole.boundingBox)) {
+        console.log(`Ball ${this.ballNumber_} collided with a hole!`);
+
+        const ballCenter = this.boundingBox_.getCenter(new THREE.Vector3());
+        const holeCenter = hole.boundingBox.getCenter(new THREE.Vector3());
+
+        const ballMin = this.boundingBox_.min;
+        const ballMax = this.boundingBox_.max;
+        const holeMin = hole.boundingBox.min;
+        const holeMax = hole.boundingBox.max;
+
+        // 각 축에서의 겹침 정도 계산
+        const xOverlap = Math.min(ballMax.x, holeMax.x) - Math.max(ballMin.x, holeMin.x);
+        const zOverlap = Math.min(ballMax.z, holeMax.z) - Math.max(ballMin.z, holeMin.z);
+
+        let normal = new THREE.Vector3();
+
+        // 가장 적게 겹친 축을 기준으로 법선 결정 및 반사
+        if (xOverlap < zOverlap) {
+          // X축 충돌
+          if (ballCenter.x < holeCenter.x) { // 공이 홀 중심의 왼쪽에 있음
+            normal.set(-1, 0, 0);
+            this.position_.x = holeMin.x - (ballMax.x - ballMin.x) / 2; // 공을 왼쪽으로 밀어냄
+          } else { // 공이 홀 중심의 오른쪽에 있음
+            normal.set(1, 0, 0);
+            this.position_.x = holeMax.x + (ballMax.x - ballMin.x) / 2; // 공을 오른쪽으로 밀어냄
+          }
+        } else {
+          // Z축 충돌
+          if (ballCenter.z < holeCenter.z) { // 공이 홀 중심의 앞에 있음
+            normal.set(0, 0, -1);
+            this.position_.z = holeMin.z - (ballMax.z - ballMin.z) / 2; // 공을 앞으로 밀어냄
+          } else { // 공이 홀 중심의 뒤에 있음
+            normal.set(0, 0, 1);
+            this.position_.z = holeMax.z + (ballMax.z - ballMin.z) / 2; // 공을 뒤로 밀어냄
+          }
+        }
+
+        this.velocity_.reflect(normal);
+
+        const epsilon = 0.001; // 공을 바운딩 박스 밖으로 밀어낼 작은 값
+
+        // 반사 및 위치 조정 후 메쉬 위치와 바운딩 박스 업데이트
+        if (xOverlap < zOverlap) {
+          if (ballCenter.x < holeCenter.x) { // 공이 홀 중심의 왼쪽에 있음
+            this.position_.x = holeMin.x - (ballMax.x - ballMin.x) / 2 - epsilon; // 공을 왼쪽으로 밀어냄
+          } else { // 공이 홀 중심의 오른쪽에 있음
+            this.position_.x = holeMax.x + (ballMax.x - ballMin.x) / 2 + epsilon; // 공을 오른쪽으로 밀어냄
+          }
+        } else {
+          if (ballCenter.z < holeCenter.z) { // 공이 홀 중심의 앞에 있음
+            this.position_.z = holeMin.z - (ballMax.z - ballMin.z) / 2 - epsilon; // 공을 앞으로 밀어냄
+          } else { // 공이 홀 중심의 뒤에 있음
+            this.position_.z = holeMax.z + (ballMax.z - ballMin.z) / 2 + epsilon; // 공을 뒤로 밀어냄
+          }
+        }
+
+        this.mesh_.position.copy(this.position_);
+        this.boundingBox_.setFromObject(this.mesh_);
+
+        break; // 한 프레임에 하나의 홀 충돌만 처리 (단순화를 위해)
+      }
+    }
 
     // [추가] 다른 공들과의 충돌 감지 및 반사
     for (const otherBall of allBalls) {
@@ -110,4 +180,5 @@ export class Ball {
     // 공의 위치가 변경될 때마다 바운딩 박스도 함께 업데이트합니다.
     this.boundingBox_.setFromObject(this.mesh_);
     console.log(`Ball ${this.ballNumber_} updated position:`, this.position_);
-}}
+  }
+}

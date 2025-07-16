@@ -16,7 +16,7 @@ export class GameStage3 {
 
     // [사용자 설정] 공 속도 증가 간격 (초 단위)
     // 이 값을 변경하여 공의 속도가 증가하는 주기를 조절할 수 있습니다.
-    this.ballSpeedIncreaseInterval = 5; 
+    this.ballSpeedIncreaseInterval = 10; 
 
     // [사용자 설정] 공 속도 증가량 (단위: 게임 내 속도 단위)
     // 이 값을 변경하여 공의 속도가 한 번에 얼마나 증가할지 조절할 수 있습니다.
@@ -57,6 +57,37 @@ export class GameStage3 {
     this.holes_ = [];
     this.balls_ = [];
     this.isFalling = false;
+    this.rimBoxHelpers_ = []; // BoxHelper 배열 초기화
+    this.holeBoxHelpers_ = []; // BoxHelper 배열 초기화
+
+    // [사용자 설정] 각 홀의 색상 (홀 번호를 키로 사용)
+    this.holeColors_ = {
+      1: 0xFFFFFF, // hole1: 빨강
+      2: 0xFFFFFF, // hole2: 초록
+      3: 0xFFFFFF, // hole3: 파랑
+      4: 0xFFFFFF, // hole4: 노랑
+      5: 0xFFFFFF, // hole5: 주황
+      6: 0xFFFFFF  // hole6: 검정
+    };
+    // [사용자 설정] 홀의 Y축 위치 조정 (기본값: 0.3)
+    this.holeHeightAdjustment_ = 0.45;
+
+    // [사용자 설정] 각 공의 색상 (공 번호를 키로 사용)
+    this.ballColors_ = {
+      1: 0xfefe48, // 1번 공: 흰색 (큐볼)
+      2: 0x39a8fe, // 2번 공: 파란색
+      3: 0xFF0000, // 3번 공: 빨간색
+      4: 0x020202, // 4번 공: 보라색
+      5: 0xee6e06, // 5번 공: 주황색
+      6: 0xa6fe48, // 6번 공: 초록색
+     
+    };
+
+    // [사용자 설정] 홀 실린더 너비 배율 (기본값: 1.1, 1보다 큰 값으로 설정하여 너비 증가)
+    this.holeCylinderWidthMultiplier_ = 1.1;
+
+    // [사용자 설정] 박스 길이 배율 (기본값: 1.1, 1보다 큰 값으로 설정하여 길이 증가)
+    this.boxLengthMultiplier_ = 1.1;
 
     this.SetupLighting();
     this.SetupSkyAndFog();
@@ -174,6 +205,8 @@ export class GameStage3 {
           const currentHeight = boxBox.max.y - boxBox.min.y;
           const scaleY = desiredHeight / currentHeight;
           boxObject.scale.y *= scaleY;
+          boxObject.scale.x *= this.boxLengthMultiplier_; // X축 길이 조정
+          boxObject.scale.z *= this.boxLengthMultiplier_; // Z축 길이 조정
           boxObject.updateMatrixWorld(true);
 
           const adjustedBox = new THREE.Box3().setFromObject(boxObject);
@@ -184,6 +217,11 @@ export class GameStage3 {
 
           this.rimCollidables_.push({ boundingBox: adjustedBox, object: boxObject });
           boxObject.visible = false;
+
+          // BoxHelper 추가 (테이블 가장자리)
+          const rimBoxHelper = new THREE.BoxHelper(boxObject, 0x00ff00); // 초록색
+          this.scene.add(rimBoxHelper);
+          this.rimBoxHelpers_.push(rimBoxHelper);
         }
 
         this.ground.traverse(child => {
@@ -196,12 +234,32 @@ export class GameStage3 {
             }
 
             if (child.name.includes('hole')) {
-              child.position.y += 0.3; // Adjust this value as needed
+              const holeNumberMatch = child.name.match(/hole(\d+)/);
+              let holeColor = this.holeColor_; // 기본 색상 (이전 설정 유지)
+              if (holeNumberMatch && this.holeColors_[holeNumberMatch[1]]) {
+                holeColor = this.holeColors_[holeNumberMatch[1]];
+              }
+
+              child.position.y += this.holeHeightAdjustment_; // Adjust this value as needed
               if (child.material) {
-                child.material = new THREE.MeshStandardMaterial({ color: 0xffffff }); // Set color to black
+                child.material = new THREE.MeshStandardMaterial({ color: holeColor });
               }
               const box = new THREE.Box3().setFromObject(child);
               this.holes_.push({ object: child, boundingBox: box });
+
+              // 실린더 형태의 바운딩 박스 시각화 (홀)
+              const cylinderRadius = ((box.max.x - box.min.x) / 2) * this.holeCylinderWidthMultiplier_; // 바운딩 박스 너비의 절반을 반지름으로 사용
+              const cylinderHeight = box.max.y - box.min.y; // 바운딩 박스 높이를 실린더 높이로 사용
+              const cylinderGeometry = new THREE.CylinderGeometry(cylinderRadius, cylinderRadius, cylinderHeight, 32);
+              const cylinderMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000, wireframe: true, transparent: true, opacity: 0.5 }); // 빨간색, 와이어프레임, 투명
+              const cylinderMesh = new THREE.Mesh(cylinderGeometry, cylinderMaterial);
+
+              // 실린더 위치 조정
+              cylinderMesh.position.copy(box.getCenter(new THREE.Vector3()));
+              cylinderMesh.position.y = box.min.y + cylinderHeight / 2; // 바운딩 박스 중앙 Y축에 맞춤
+
+              this.scene.add(cylinderMesh);
+              this.holeBoxHelpers_.push(cylinderMesh); // 실린더 메쉬를 헬퍼 배열에 추가
             }
           }
         });
@@ -228,7 +286,8 @@ export class GameStage3 {
         scene: this.scene,
         position: position,
         mainBoundingBox: mainBoundingBox,
-        ballNumber: i
+        ballNumber: i,
+        ballColor: this.ballColors_[i] // 공 색상 전달
       }, this.currentBallSpeedIncrease);
 
       this.balls_.push(ball);
@@ -297,7 +356,12 @@ export class GameStage3 {
 
     // [수정] 모든 공 인스턴스를 Ball.Update 메서드로 전달하여 공끼리 충돌 감지 가능하게 함
     for (const ball of this.balls_) {
-      ball.Update(delta, this.currentBallSpeedIncrease, this.balls_);
+      ball.Update(delta, this.currentBallSpeedIncrease, this.balls_, this.holes_);
+    }
+
+    // BoxHelper 업데이트
+    for (const helper of this.rimBoxHelpers_) {
+      helper.update();
     }
 
     this.renderer.render(this.scene, this.camera);
