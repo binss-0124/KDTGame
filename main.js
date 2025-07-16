@@ -220,6 +220,7 @@ export class GameStage3 {
 
           // BoxHelper 추가 (테이블 가장자리)
           const rimBoxHelper = new THREE.BoxHelper(boxObject, 0x00ff00); // 초록색
+          rimBoxHelper.visible = false; // 테이블 가장자리 바운딩 박스를 보이지 않게 설정
           this.scene.add(rimBoxHelper);
           this.rimBoxHelpers_.push(rimBoxHelper);
         }
@@ -253,6 +254,7 @@ export class GameStage3 {
               const cylinderGeometry = new THREE.CylinderGeometry(cylinderRadius, cylinderRadius, cylinderHeight, 32);
               const cylinderMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000, wireframe: true, transparent: true, opacity: 0.5 }); // 빨간색, 와이어프레임, 투명
               const cylinderMesh = new THREE.Mesh(cylinderGeometry, cylinderMaterial);
+              cylinderMesh.visible = false; // 홀 바운딩 박스를 보이지 않게 설정
 
               // 실린더 위치 조정
               cylinderMesh.position.copy(box.getCenter(new THREE.Vector3()));
@@ -278,7 +280,7 @@ export class GameStage3 {
     for (let i = 1; i <= 6; i++) {
       const position = new THREE.Vector3(
           mainBoundingBox.min.x + Math.random() * (mainBoundingBox.max.x - mainBoundingBox.min.x),
-          mainTopY + 0.1,
+          mainTopY + 0.2,
           mainBoundingBox.min.z + Math.random() * (mainBoundingBox.max.z - mainBoundingBox.min.z)
       );
 
@@ -299,11 +301,10 @@ export class GameStage3 {
       scene: this.scene,
       position: new THREE.Vector3(0, playerY, 0),
       mainTopY: this.mainTopY, // mainTopY 추가
-      onDebugToggle: (visible) => this.npc_.ToggleDebugVisuals(visible),
+      
     });
 
-    const npcPos = new THREE.Vector3(0, playerY, -4);
-    this.npc_ = new object.NPC(this.scene, npcPos);
+
 
     this.cameraTargetOffset = new THREE.Vector3(0, 15, 10);
     this.rotationAngle = 4.715;
@@ -356,7 +357,7 @@ export class GameStage3 {
 
     // [수정] 모든 공 인스턴스를 Ball.Update 메서드로 전달하여 공끼리 충돌 감지 가능하게 함
     for (const ball of this.balls_) {
-      ball.Update(delta, this.currentBallSpeedIncrease, this.balls_, this.holes_);
+      ball.Update(delta, this.currentBallSpeedIncrease, this.balls_, this.holes_, this.player_.boundingBox_);
     }
 
     // BoxHelper 업데이트

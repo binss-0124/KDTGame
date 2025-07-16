@@ -1,31 +1,95 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <title>멀티플레이 방</title>
-    <style>
-        body { margin: 0; padding: 0; overflow: hidden; background: #222; }
-        #container { width: 100vw; height: 100vh; }
-        #info {
-            position: absolute; top: 10px; left: 10px; color: white; z-index: 100;
-            background: rgba(0,0,0,0.8); padding: 20px; border-radius: 10px;
-            box-shadow: 0 6px 12px rgba(0,0,0,0.4); max-width: 300px;
-        }
-        #info h3 { margin: 0 0 15px 0; color: #FFD700; font-size: 18px; }
-        #info p { margin: 8px 0; font-size: 14px; line-height: 1.4; }
-        .status { color: #90EE90; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>격투 게임</title>
+  <style>
+  body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    font-family: Arial, sans-serif;
+    background-color: #f0f0f0;
+    color: #333333;
+    background-image: url('main-image.png');
+    background-size: 1540px auto;
+    background-position: center 0px;
+    background-repeat: no-repeat;
+  }
+  #menu {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center; /* 수직 중앙 정렬 */
+  align-items: center;     /* 수평 중앙 정렬 */
+  z-index: 10;
+  }
+  #menu h1 {
+    font-size: 48px;
+    margin-bottom: 20px;
+    color: #fffb02;
+  }
+  #startButton {
+    padding: 15px 30px;
+    font-size: 24px;
+    background-color: #d97d3d;
+    border: none;
+    border-radius: 5px;
+    color: white;
+    cursor: pointer;
+    transition: background-color 0.3s, transform 0.2s;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+  }
+  #startButton:hover {
+    background-color: #b86b34;
+    transform: scale(1.05);
+  }
+  #controls {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    font-size: 18px;
+    background: rgba(255, 255, 255, 0.8);
+    padding: 10px;
+    border-radius: 5px;
+    border: 1px solid #d97d3d;
+  }
+  #container {
+    width: 100%;
+    height: 100%;
+  }
+</style>
 </head>
 <body>
-    <div id="container"></div>
-    <div id="info">
-        <h3>멀티플레이 격투 게임</h3>
-        <p class="status">WASD : 이동</p>
-        <p class="status">Shift : 달리기</p>
-        <p class="status">K : 점프</p>
-        <p class="status">L : 구르기</p>
-    </div>
-    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-    <script type="module" src="main.js"></script>
+  <div id="menu">
+    <h1>격투 게임</h1>
+    <button id="startButton">게임 시작</button>
+  </div>
+  <div id="controls" style="display: none;">
+    <p>WASD: 이동</p>
+    <p>Shift: 달리기</p>
+    <p>K: 점프</p>
+    <p>L: 구르기</p>
+  </div>
+  <div id="container"></div>
+
+  <script type="module">
+    import { GameStage3 } from './main.js';
+
+    const menu = document.getElementById('menu');
+    const controls = document.getElementById('controls');
+    const startButton = document.getElementById('startButton');
+
+    startButton.addEventListener('click', () => {
+      menu.style.display = 'none';
+      controls.style.display = 'block';
+      new GameStage3();
+    });
+  </script>
 </body>
 </html>

@@ -90,11 +90,10 @@ export const player = (() => {
             this.rollCooldownTimer_ = this.rollCooldown_;
           }
           break;
-          /*
-        case 'KeyB':
+          case 'KeyB':
           this.keys_.debug = !this.keys_.debug;
           this.UpdateDebugVisuals();
-          break;*/
+          break;
       }
     }
 
@@ -139,7 +138,7 @@ export const player = (() => {
         );
         this.boundingBox_.translate(this.position_);
         this.boundingBoxHelper_ = new THREE.Box3Helper(this.boundingBox_, 0xff0000);
-        this.boundingBoxHelper_.visible = false;
+        this.boundingBoxHelper_.visible = false; // 플레이어 바운딩 박스를 기본적으로 보이지 않게 설정
         this.params_.scene.add(this.boundingBoxHelper_);
 
         this.mixer_ = new THREE.AnimationMixer(model);
