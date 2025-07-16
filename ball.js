@@ -3,16 +3,18 @@ import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.124/examples/js
 import { BoxHelper } from 'https://cdn.jsdelivr.net/npm/three@0.124/src/helpers/BoxHelper.js';
 
 export class Ball {
-  constructor(params) {
+  constructor(params, currentBallSpeedIncrease = 0) {
     this.scene_ = params.scene;
     this.position_ = params.position;
     this.mainBoundingBox_ = params.mainBoundingBox;
     this.ballNumber_ = params.ballNumber;
 
+    // 초기 속도에 누적된 공 속도 증가량 적용
+    this.initialSpeed_ = 10; // 공의 기본 속도
     this.velocity_ = new THREE.Vector3(
-        (Math.random() * 2 - 1) * 10, // Increased speed
+        (Math.random() * 2 - 1) * (this.initialSpeed_ + currentBallSpeedIncrease),
         0,
-        (Math.random() * 2 - 1) * 10  // Increased speed
+        (Math.random() * 2 - 1) * (this.initialSpeed_ + currentBallSpeedIncrease)
     );
 
     this.LoadModel_();
@@ -22,7 +24,7 @@ export class Ball {
     const loader = new GLTFLoader();
     loader.load(`./resources/Pool-table/ball/${this.ballNumber_}ball.glb`, (gltf) => {
       this.mesh_ = gltf.scene;
-      this.mesh_.scale.set(40, 40, 40); // 크기를 대폭 키움
+      this.mesh_.scale.set(40, 40, 40); // 크기 조정
       this.mesh_.position.copy(this.position_);
       this.mesh_.traverse(child => {
         if (child.isMesh) {
@@ -49,12 +51,13 @@ export class Ball {
     });
   }
 
-  Update(delta) {
+  Update(delta, currentBallSpeedIncrease = 0) {
     if (!this.mesh_) {
       return;
     }
 
-    this.position_.add(this.velocity_.clone().multiplyScalar(delta));
+    // 공의 이동 속도에 누적된 증가량 적용
+    this.position_.add(this.velocity_.clone().normalize().multiplyScalar((this.initialSpeed_ + currentBallSpeedIncrease) * delta));
 
     // BoxHelper 업데이트
     if (this.boxHelper_) {

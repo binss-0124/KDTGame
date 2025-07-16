@@ -10,6 +10,20 @@ export class GameStage3 {
   constructor() {
     console.log('GameStage3 constructor called.');
     this.Initialize();
+    // 게임 속도 관련 변수 초기화
+    // 게임 속도 관련 변수 초기화
+    this.gameSpeedMultiplier = 1; // 플레이어 속도 배율 (기존 유지)
+
+    // [사용자 설정] 공 속도 증가 간격 (초 단위)
+    // 이 값을 변경하여 공의 속도가 증가하는 주기를 조절할 수 있습니다.
+    this.ballSpeedIncreaseInterval = 3; 
+
+    // [사용자 설정] 공 속도 증가량 (단위: 게임 내 속도 단위)
+    // 이 값을 변경하여 공의 속도가 한 번에 얼마나 증가할지 조절할 수 있습니다.
+    this.ballSpeedIncrement = 10; 
+
+    this.timeSinceLastBallSpeedIncrease = 0; // 마지막 공 속도 증가 이후 경과 시간 (내부 사용)
+    this.currentBallSpeedIncrease = 0; // 현재까지 누적된 공 속도 증가량 (내부 사용)
     this.RAF();
   }
 
@@ -215,7 +229,7 @@ export class GameStage3 {
         position: position,
         mainBoundingBox: mainBoundingBox,
         ballNumber: i
-      });
+      }, this.currentBallSpeedIncrease);
 
       this.balls_.push(ball);
     }
@@ -264,8 +278,16 @@ export class GameStage3 {
     this.prevTime = time || performance.now();
 
     if (this.player_) {
+      // 공 속도 증가 로직
+      this.timeSinceLastBallSpeedIncrease += delta;
+      if (this.timeSinceLastBallSpeedIncrease >= this.ballSpeedIncreaseInterval) {
+        this.currentBallSpeedIncrease += this.ballSpeedIncrement; // 공 속도 증가
+        this.timeSinceLastBallSpeedIncrease = 0; // 타이머 리셋
+        console.log(`Ball speed increased to: ${this.currentBallSpeedIncrease.toFixed(2)}`);
+      }
+
       const allCollidables = this.collidables_.concat(this.npc_ ? this.npc_.GetCollidables() : []);
-      this.player_.Update(delta, this.rotationAngle, allCollidables, this.rimCollidables_);
+      this.player_.Update(delta, this.rotationAngle, allCollidables, this.rimCollidables_, this.gameSpeedMultiplier);
       this.UpdateCamera();
     }
 
@@ -274,7 +296,7 @@ export class GameStage3 {
     }
 
     for (const ball of this.balls_) {
-      ball.Update(delta);
+      ball.Update(delta, this.currentBallSpeedIncrease);
     }
 
     this.renderer.render(this.scene, this.camera);
