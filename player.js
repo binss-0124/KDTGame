@@ -12,6 +12,7 @@ export const player = (() => {
         this.position_.copy(this.params_.position);
       }
       this.mainTopY_ = params.mainTopY; // mainTopY 저장
+      this.tableBoundingBox_ = params.tableBoundingBox; // 추가: 당구대 전체 바운딩 박스
       this.mesh_ = null;
       this.mixer_ = null;
       this.animations_ = {};
@@ -24,7 +25,7 @@ export const player = (() => {
         shift: false,
         debug: false,
       };
-      this.jumpPower_ = 12;
+      this.jumpPower_ = 15;
       this.gravity_ = -30;
       this.isJumping_ = false;
       this.velocityY_ = 0;
@@ -39,6 +40,7 @@ export const player = (() => {
       this.rollDirection_ = new THREE.Vector3(0, 0, 0);
       this.rollCooldown_ = 1.0;
       this.rollCooldownTimer_ = 0;
+      this.isFalling_ = false; // 추가: 떨어지는 상태 플래그
 
       this.LoadModel_();
       this.InitInput_();
@@ -128,17 +130,16 @@ export const player = (() => {
           }
         });
 
-        // 고정된 크기의 바운딩 박스 초기화
-        const halfWidth = 0.65; // 너비: 1.0
-        const halfHeight = 3.2; // 높이: 2.5
-        const halfDepth = 0.65; // 깊이: 1.0
+        const halfWidth = 0.65;
+        const halfHeight = 3.2;
+        const halfDepth = 0.65;
         this.boundingBox_.set(
           new THREE.Vector3(-halfWidth, 0, -halfDepth),
           new THREE.Vector3(halfWidth, halfHeight, halfDepth)
         );
         this.boundingBox_.translate(this.position_);
         this.boundingBoxHelper_ = new THREE.Box3Helper(this.boundingBox_, 0xff0000);
-        this.boundingBoxHelper_.visible = false; // 플레이어 바운딩 박스를 기본적으로 보이지 않게 설정
+        this.boundingBoxHelper_.visible = false;
         this.params_.scene.add(this.boundingBoxHelper_);
 
         this.mixer_ = new THREE.AnimationMixer(model);
@@ -150,6 +151,10 @@ export const player = (() => {
     }
 
     SetAnimation_(name) {
+      if (!this.animations_[name]) {
+        console.warn(`Animation "${name}" not found!`);
+        return;
+      }
       if (this.currentAction_ === this.animations_[name]) return;
       if (this.currentAction_) {
         this.currentAction_.fadeOut(0.3);
@@ -177,6 +182,44 @@ export const player = (() => {
       }
     }
 
+    ResolveCollisions_(newPosition, collidables, rimCollidables) {
+      const tempBox = this.boundingBox_.clone();
+      const size = tempBox.getSize(new THREE.Vector3());
+      tempBox.setFromCenterAndSize(newPosition.clone().add(new THREE.Vector3(0, size.y / 2, 0)), size);
+
+      let isOnTop = false;
+      let topY = 0;
+
+      for (const collidable of collidables.concat(rimCollidables)) {
+        if (tempBox.intersectsBox(collidable.boundingBox)) {
+          const playerWasAbove = this.boundingBox_.min.y >= collidable.boundingBox.max.y - 0.1;
+
+          if (this.velocityY_ <= 0 && playerWasAbove) {
+            isOnTop = true;
+            topY = Math.max(topY, collidable.boundingBox.max.y);
+            newPosition.y = topY;
+            this.velocityY_ = 0;
+            this.isJumping_ = false;
+          } else {
+            const center = tempBox.getCenter(new THREE.Vector3());
+            const collidableCenter = collidable.boundingBox.getCenter(new THREE.Vector3());
+            const overlap = tempBox.clone().intersect(collidable.boundingBox);
+            const overlapSize = overlap.getSize(new THREE.Vector3());
+
+            if (overlapSize.x < overlapSize.z) {
+              const sign = Math.sign(center.x - collidableCenter.x);
+              newPosition.x += overlapSize.x * sign;
+            } else {
+              const sign = Math.sign(center.z - collidableCenter.z);
+              newPosition.z += overlapSize.z * sign;
+            }
+            tempBox.setFromCenterAndSize(newPosition.clone().add(new THREE.Vector3(0, size.y / 2, 0)), size);
+          }
+        }
+      }
+      return { newPosition, isOnTop };
+    }
+
     Update(timeElapsed, rotationAngle = 0, collidables = [], rimCollidables = []) {
       if (!this.mesh_) return;
 
@@ -184,252 +227,109 @@ export const player = (() => {
 
       if (this.rollCooldownTimer_ > 0) {
         this.rollCooldownTimer_ -= timeElapsed;
-        if (this.rollCooldownTimer_ < 0) this.rollCooldownTimer_ = 0;
       }
 
-      let newPosition = this.position_.clone();
       let velocity = new THREE.Vector3();
-      const forward = new THREE.Vector3(0, 0, -1);
-      const right = new THREE.Vector3(1, 0, 0);
-
-      // 입력에 따른 방향 계산
-      if (this.keys_.forward) velocity.z -= 1;
-      if (this.keys_.backward) velocity.z += 1;
-      if (this.keys_.left) velocity.x -= 1;
-      if (this.keys_.right) velocity.x += 1;
-      velocity.applyAxisAngle(new THREE.Vector3(0, 1, 0), rotationAngle);
-
-      // 회전 업데이트 (충돌과 무관하게 항상 처리)
-      if (velocity.length() > 0.01) {
-        const angle = Math.atan2(velocity.x, velocity.z);
-        const targetQuaternion = new THREE.Quaternion().setFromAxisAngle(
-          new THREE.Vector3(0, 1, 0), angle
-        );
-        this.mesh_.quaternion.slerp(targetQuaternion, 0.3);
-      }
+      let newPosition = this.position_.clone();
+      let isOnTop = false;
 
       if (this.isRolling_) {
         this.rollTimer_ -= timeElapsed;
-        const rollMove = this.rollDirection_.clone().multiplyScalar(this.rollSpeed_ * timeElapsed);
-        newPosition.add(rollMove);
-
-        // 중력 적용
-        this.velocityY_ += this.gravity_ * timeElapsed;
-        newPosition.y += this.velocityY_ * timeElapsed;
-
-        // 구르기 중 충돌 체크 및 슬라이딩 처리
-        const tempBox = this.boundingBox_.clone();
-        tempBox.translate(rollMove);
-        tempBox.translate(new THREE.Vector3(0, this.velocityY_ * timeElapsed, 0));
-
-        let canMove = true;
-        let adjustedRollMove = rollMove.clone();
-        let isOnTop = false;
-        let topY = 0;
-
-        for (const collidable of collidables.concat(rimCollidables)) {
-          if (tempBox.intersectsBox(collidable.boundingBox)) {
-            // 플레이어가 오브젝트 위에 있는지 확인
-            const playerBottom = this.boundingBox_.min.y + this.velocityY_ * timeElapsed;
-            const collidableTop = collidable.boundingBox.max.y;
-            if (playerBottom >= collidableTop - 0.1 && this.position_.y >= collidableTop - 0.1) {
-              isOnTop = true;
-              topY = Math.max(topY, collidableTop);
-              // X/Z 이동은 허용하되, 바운딩 박스 경계 체크
-              const newTempBox = this.boundingBox_.clone();
-              newTempBox.translate(rollMove);
-              if (
-                newTempBox.min.x > collidable.boundingBox.max.x ||
-                newTempBox.max.x < collidable.boundingBox.min.x ||
-                newTempBox.min.z > collidable.boundingBox.max.z ||
-                newTempBox.max.z < collidable.boundingBox.min.z
-              ) {
-                isOnTop = false; // 경계를 벗어나면 떨어져야 함
-              }
-              if (isOnTop) continue; // 오브젝트 위에 있으면 X/Z 이동 허용
-            }
-
-            canMove = false;
-            // X와 Z 방향을 개별적으로 테스트
-            let canMoveX = true;
-            let canMoveZ = true;
-
-            // X 방향 테스트
-            const tempBoxX = this.boundingBox_.clone();
-            tempBoxX.translate(new THREE.Vector3(rollMove.x, this.velocityY_ * timeElapsed, 0));
-            if (tempBoxX.intersectsBox(collidable.boundingBox)) {
-              canMoveX = false;
-            }
-
-            // Z 방향 테스트
-            const tempBoxZ = this.boundingBox_.clone();
-            tempBoxZ.translate(new THREE.Vector3(0, this.velocityY_ * timeElapsed, rollMove.z));
-            if (tempBoxZ.intersectsBox(collidable.boundingBox)) {
-              canMoveZ = false;
-            }
-
-            // 슬라이딩: 충돌하지 않는 방향으로만 이동
-            if (!canMoveX && canMoveZ) {
-              adjustedRollMove.x = 0; // X 방향 이동 차단
-            } else if (canMoveX && !canMoveZ) {
-              adjustedRollMove.z = 0; // Z 방향 이동 차단
-            } else {
-              adjustedRollMove.set(0, 0, 0); // 둘 다 충돌 시 이동 차단
-            }
-            break; // 첫 번째 충돌 처리 후 종료
-          }
-        }
-
-        if (canMove || adjustedRollMove.length() > 0) {
-          this.position_.add(adjustedRollMove);
-          if (isOnTop) {
-            this.position_.y = topY; // 오브젝트 위에 고정
-            this.velocityY_ = 0;
-            this.isJumping_ = false;
-          } else {
-            this.position_.y = newPosition.y; // 중력에 따라 Y 이동
-          }
-        } else {
-          this.position_.y = newPosition.y; // Y 이동은 허용
-        }
-
-        // 바닥 체크
-        if (this.position_.y <= this.mainTopY_ && !isOnTop) {
-          this.position_.y = this.mainTopY_;
-          this.velocityY_ = 0;
-          this.isJumping_ = false;
-        }
-
-        if (this.rollTimer_ <= 0) {
-          this.isRolling_ = false;
-          const isMoving = this.keys_.forward || this.keys_.backward || this.keys_.left || this.keys_.right;
-          const isRunning = isMoving && this.keys_.shift;
-          this.SetAnimation_(isMoving ? (isRunning ? 'Run' : 'Walk') : 'Idle');
-        }
+        velocity = this.rollDirection_.clone().multiplyScalar(this.rollSpeed_ * timeElapsed);
       } else {
         const isMoving = this.keys_.forward || this.keys_.backward || this.keys_.left || this.keys_.right;
-        const isRunning = isMoving && this.keys_.shift;
-        const moveSpeed = isRunning ? this.speed_ * 2 : this.speed_;
+        if (isMoving) {
+          if (this.keys_.forward) velocity.z -= 1;
+          if (this.keys_.backward) velocity.z += 1;
+          if (this.keys_.left) velocity.x -= 1;
+          if (this.keys_.right) velocity.x += 1;
+          velocity.applyAxisAngle(new THREE.Vector3(0, 1, 0), rotationAngle);
+          velocity.normalize();
 
-        velocity.normalize().multiplyScalar(moveSpeed * timeElapsed);
-        newPosition.add(velocity);
-
-        // 중력 적용
-        this.velocityY_ += this.gravity_ * timeElapsed;
-        newPosition.y += this.velocityY_ * timeElapsed;
-
-        // 충돌 감지 및 슬라이딩 처리
-        const tempBox = this.boundingBox_.clone();
-        tempBox.translate(velocity);
-        tempBox.translate(new THREE.Vector3(0, this.velocityY_ * timeElapsed, 0));
-
-        let canMove = true;
-        let stepUpHeight = 0;
-        let adjustedVelocity = velocity.clone();
-        let isOnTop = false;
-        let topY = 0;
-
-        for (const collidable of collidables.concat(rimCollidables)) {
-          if (tempBox.intersectsBox(collidable.boundingBox)) {
-            // 플레이어가 오브젝트 위에 있는지 확인
-            const playerBottom = this.boundingBox_.min.y + this.velocityY_ * timeElapsed;
-            const collidableTop = collidable.boundingBox.max.y;
-            if (playerBottom >= collidableTop - 0.1 && this.position_.y >= collidableTop - 0.1) {
-              isOnTop = true;
-              topY = Math.max(topY, collidableTop);
-              // X/Z 이동은 허용하되, 바운딩 박스 경계 체크
-              const newTempBox = this.boundingBox_.clone();
-              newTempBox.translate(velocity);
-              if (
-                newTempBox.min.x > collidable.boundingBox.max.x ||
-                newTempBox.max.x < collidable.boundingBox.min.x ||
-                newTempBox.min.z > collidable.boundingBox.max.z ||
-                newTempBox.max.z < collidable.boundingBox.min.z
-              ) {
-                isOnTop = false; // 경계를 벗어나면 떨어져야 함
-              }
-              if (isOnTop) continue; // 오브젝트 위에 있으면 X/Z 이동 허용
-            }
-
-            const boxMaxY = collidable.boundingBox.max.y;
-            if (boxMaxY <= this.position_.y + this.maxStepHeight_ && boxMaxY > this.position_.y) {
-              stepUpHeight = Math.max(stepUpHeight, boxMaxY - this.position_.y);
-            } else {
-              canMove = false;
-              // X와 Z 방향을 개별적으로 테스트
-              let canMoveX = true;
-              let canMoveZ = true;
-
-              // X 방향 테스트
-              const tempBoxX = this.boundingBox_.clone();
-              tempBoxX.translate(new THREE.Vector3(velocity.x, this.velocityY_ * timeElapsed, 0));
-              if (tempBoxX.intersectsBox(collidable.boundingBox)) {
-                canMoveX = false;
-              }
-
-              // Z 방향 테스트
-              const tempBoxZ = this.boundingBox_.clone();
-              tempBoxZ.translate(new THREE.Vector3(0, this.velocityY_ * timeElapsed, velocity.z));
-              if (tempBoxZ.intersectsBox(collidable.boundingBox)) {
-                canMoveZ = false;
-              }
-
-              // 슬라이딩: 충돌하지 않는 방향으로만 이동
-              if (!canMoveX && canMoveZ) {
-                adjustedVelocity.x = 0; // X 방향 이동 차단
-              } else if (canMoveX && !canMoveZ) {
-                adjustedVelocity.z = 0; // Z 방향 이동 차단
-              } else {
-                adjustedVelocity.set(0, 0, 0); // 둘 다 충돌 시 이동 차단
-              }
-              break;
-            }
-          }
+          const isRunning = this.keys_.shift;
+          const moveSpeed = isRunning ? this.speed_ * 2 : this.speed_;
+          velocity.multiplyScalar(moveSpeed * timeElapsed);
         }
+      }
+      
+      newPosition.add(velocity);
 
-        if (canMove || adjustedVelocity.length() > 0) {
-          this.position_.add(adjustedVelocity);
-          if (stepUpHeight > 0) {
-            this.position_.y = newPosition.y + stepUpHeight;
-            this.velocityY_ = 0;
-            this.isJumping_ = false;
-          } else if (isOnTop) {
-            this.position_.y = topY; // 오브젝트 위에 고정
-            this.velocityY_ = 0;
-            this.isJumping_ = false;
-          } else {
-            this.position_.y = newPosition.y; // 중력에 따라 Y 이동
-          }
+      // Apply gravity
+      this.velocityY_ += this.gravity_ * timeElapsed;
+      newPosition.y += this.velocityY_ * timeElapsed;
+
+      const collisionResult = this.ResolveCollisions_(newPosition, collidables, rimCollidables);
+      newPosition = collisionResult.newPosition;
+      isOnTop = collisionResult.isOnTop;
+
+      // 당구대 범위 벗어남 감지 및 Y축 하강 로직 추가
+      if (this.tableBoundingBox_) {
+        const playerX = newPosition.x;
+        const playerZ = newPosition.z;
+        const tableMinX = this.tableBoundingBox_.min.x;
+        const tableMaxX = this.tableBoundingBox_.max.x;
+        const tableMinZ = this.tableBoundingBox_.min.z;
+        const tableMaxZ = this.tableBoundingBox_.max.z;
+
+        // 플레이어가 당구대 X 또는 Z 범위를 벗어났는지 확인
+        if (playerX < tableMinX || playerX > tableMaxX || playerZ < tableMinZ || playerZ > tableMaxZ) {
+          
+          this.isFalling_ = true; // 떨어지는 상태를 나타내는 플래그
+        newPosition.y -= 15; // Y축으로 15픽셀 하강
         } else {
-          this.position_.y = newPosition.y; // Y 이동은 허용
+          this.isFalling_ = false;
         }
+      }
 
-        // 바닥 체크
-        if (this.position_.y <= this.mainTopY_ && !isOnTop) {
-          this.position_.y = this.mainTopY_;
-          this.velocityY_ = 0;
-          this.isJumping_ = false;
+      this.position_.copy(newPosition);
+
+      // Ground check
+      if (this.position_.y <= this.mainTopY_ && !isOnTop && !this.isFalling_) { // isFalling_ 조건 추가
+        this.position_.y = this.mainTopY_;
+        this.velocityY_ = 0;
+        if (this.isJumping_) {
+            this.isJumping_ = false;
+            const isMoving = this.keys_.forward || this.keys_.backward || this.keys_.left || this.keys_.right;
+            this.SetAnimation_(isMoving ? 'Walk' : 'Idle');
         }
+      }
 
-        // 애니메이션 업데이트
-        if (this.position_.y > this.mainTopY_ && this.isJumping_) {
+      // Rotation update
+      if (velocity.length() > 0.01) {
+        const angle = Math.atan2(velocity.x, velocity.z);
+        const targetQuaternion = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), angle);
+        this.mesh_.quaternion.slerp(targetQuaternion, 0.3);
+      }
+
+      // Animation update
+      if (this.isRolling_) {
+        if (this.rollTimer_ <= 0) {
+          this.isRolling_ = false;
+          this.rollCooldownTimer_ = this.rollCooldown_;
+          const isMoving = this.keys_.forward || this.keys_.backward || this.keys_.left || this.keys_.right;
+          this.SetAnimation_(isMoving ? 'Walk' : 'Idle');
+        }
+      } else {
+        if (this.isJumping_) {
           this.SetAnimation_('Jump');
-        } else if (isMoving) {
-          this.SetAnimation_(isRunning ? 'Run' : 'Walk');
         } else {
-          this.SetAnimation_('Idle');
+          const isMoving = this.keys_.forward || this.keys_.backward || this.keys_.left || this.keys_.right;
+          const isRunning = isMoving && this.keys_.shift;
+          if (isMoving) {
+            this.SetAnimation_(isRunning ? 'Run' : 'Walk');
+          } else {
+            this.SetAnimation_('Idle');
+          }
         }
       }
 
       this.mesh_.position.copy(this.position_);
-      // 바운딩 박스 위치를 플레이어에 맞춰 업데이트
-      const halfWidth = 0.65; // 너비: 1.0
-      const halfHeight = 3.2; // 높이: 2.5
-      const halfDepth = 0.65; // 깊이: 1.0  
-      this.boundingBox_.set(
-        new THREE.Vector3(this.position_.x - halfWidth, this.position_.y, this.position_.z - halfDepth),
-        new THREE.Vector3(this.position_.x + halfWidth, this.position_.y + halfHeight, this.position_.z + halfDepth)
-      );
+      const boxSize = this.boundingBox_.getSize(new THREE.Vector3());
+      this.boundingBox_.setFromCenterAndSize(this.position_.clone().add(new THREE.Vector3(0, boxSize.y / 2, 0)), boxSize);
+      
+      if (this.boundingBoxHelper_) {
+        this.boundingBoxHelper_.box.copy(this.boundingBox_);
+      }
 
       if (this.mixer_) {
         this.mixer_.update(timeElapsed);
@@ -441,3 +341,7 @@ export const player = (() => {
     Player: Player,
   };
 })();
+
+export function getPlayerBoundingBox(playerInstance) {
+  return playerInstance.boundingBox_;
+}

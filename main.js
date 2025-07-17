@@ -89,6 +89,13 @@ export class GameStage3 {
     // [사용자 설정] 박스 길이 배율 (기본값: 1.1, 1보다 큰 값으로 설정하여 길이 증가)
     this.boxLengthMultiplier_ = 1.1;
 
+    // table0.glb의 경계 좌표 설정
+    this.tableBoundaryMinX = -12.594456122070895;
+    this.tableBoundaryMaxX = 12.811532052877915;
+    this.tableBoundaryMinZ = -14.732399815742233;
+    this.tableBoundaryMaxZ = 50.32672684244709;
+    this.mapYPosition = -0.1; // map.png의 Y축 위치
+
     this.SetupLighting();
     this.SetupSkyAndFog();
     this.CreateGround();
@@ -155,14 +162,27 @@ export class GameStage3 {
   }
 
   CreateGround() {
+    // 이미지 맵 (바닥) 생성
+    const textureLoader = new THREE.TextureLoader();
+    textureLoader.load('./resources/map.png', (texture) => {
+      const groundGeometry = new THREE.PlaneGeometry(100, 100); // 이미지 맵의 크기 (조절 가능)
+      const groundMaterial = new THREE.MeshStandardMaterial({ map: texture, side: THREE.DoubleSide });
+      const groundPlane = new THREE.Mesh(groundGeometry, groundMaterial);
+      groundPlane.rotation.x = -Math.PI / 2; // 바닥으로 눕히기
+      groundPlane.position.y = -10.0; // table0.glb 아래에 위치하도록 약간 내림
+      groundPlane.receiveShadow = true;
+      this.scene.add(groundPlane);
+    });
+
+    // table0.glb 로드
     const loader = new GLTFLoader();
     loader.load(
-      './resources/Pool-table/table31.glb',
+      './resources/Pool-table/table0.glb',
       (gltf) => {
         this.ground = gltf.scene;
         const box = new THREE.Box3().setFromObject(this.ground);
         const minY = box.min.y;
-        this.ground.position.y = -minY;
+        this.ground.position.y = -minY; // 모델의 바닥이 0이 되도록 조정
 
         const size = new THREE.Vector3();
         box.getSize(size);
@@ -190,6 +210,7 @@ export class GameStage3 {
           const box = new THREE.Box3().setFromObject(this.ground);
           groundY = box.max.y;
         }
+        // 플레이어 스폰 Y 위치 조정: table0.glb의 상단에 위치하도록
         this.playerSpawnY = this.mainTopY !== undefined ? this.mainTopY + 0.01 : groundY + 11;
 
         const desiredHeight = 2.296;
@@ -346,9 +367,15 @@ export class GameStage3 {
         console.log(`Ball speed increased to: ${this.currentBallSpeedIncrease.toFixed(2)}`);
       }
 
-      const allCollidables = this.collidables_.concat(this.npc_ ? this.npc_.GetCollidables() : []);
+      const allCollidables = this.collidables_.concat(this.npc_ ? this.npc_.GetCollidables() : []).concat(this.holes_);
       this.player_.Update(delta, this.rotationAngle, allCollidables, this.rimCollidables_, this.gameSpeedMultiplier);
       this.UpdateCamera();
+
+      // 플레이어 경계 검사
+      if (this.player_.mesh_.position.x < this.tableBoundaryMinX || this.player_.mesh_.position.x > this.tableBoundaryMaxX ||
+          this.player_.mesh_.position.z < this.tableBoundaryMinZ || this.player_.mesh_.position.z > this.tableBoundaryMaxZ) {
+          this.player_.mesh_.position.y = this.mapYPosition;
+      }
     }
 
     if (this.npc_) {
@@ -358,6 +385,12 @@ export class GameStage3 {
     // [수정] 모든 공 인스턴스를 Ball.Update 메서드로 전달하여 공끼리 충돌 감지 가능하게 함
     for (const ball of this.balls_) {
       ball.Update(delta, this.currentBallSpeedIncrease, this.balls_, this.holes_, this.player_.boundingBox_);
+
+      // 공 경계 검사
+      if (ball.mesh_.position.x < this.tableBoundaryMinX || ball.mesh_.position.x > this.tableBoundaryMaxX ||
+          ball.mesh_.position.z < this.tableBoundaryMinZ || ball.mesh_.position.z > this.tableBoundaryMaxZ) {
+          ball.mesh_.position.y = this.mapYPosition;
+      }
     }
 
     // BoxHelper 업데이트

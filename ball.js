@@ -35,8 +35,6 @@ export class Ball {
           // Assign color based on ball number or provided color
           if (this.ballColor_ !== undefined) {
             child.material = new THREE.MeshStandardMaterial({ color: this.ballColor_ });
-          } else if (this.ballNumber_ === 8) {
-            child.material = new THREE.MeshStandardMaterial({ color: 0x000000 }); // Black for ball 8
           } else {
             const randomColor = new THREE.Color(Math.random(), Math.random(), Math.random());
             child.material = new THREE.MeshStandardMaterial({ color: randomColor });
